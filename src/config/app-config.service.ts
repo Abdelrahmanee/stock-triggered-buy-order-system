@@ -51,9 +51,9 @@ export class AppConfigService {
   }
 
   get snsCredentials(): AwsCredentials {
-    const accessKeyId = this.getOptionalString('SNS_AWS_ACCESS_KEY_ID');
-    const secretAccessKey = this.getOptionalString('SNS_AWS_SECRET_ACCESS_KEY');
-    const sessionToken = this.getOptionalString('SNS_AWS_SESSION_TOKEN');
+    const accessKeyId = this.getOptionalString('AWS_ACCESS_KEY_ID');
+    const secretAccessKey = this.getOptionalString('AWS_SECRET_ACCESS_KEY');
+    const sessionToken = this.getOptionalString('AWS_SESSION_TOKEN');
 
     if (!accessKeyId || !secretAccessKey) {
       throw new Error(

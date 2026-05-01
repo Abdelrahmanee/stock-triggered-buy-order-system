@@ -1,52 +1,49 @@
-import { PublishCommand, SNSClient, SubscribeCommand } from '@aws-sdk/client-sns';
+import {
+  PublishCommand,
+  SetSubscriptionAttributesCommand,
+  SNSClient,
+  SubscribeCommand,
+} from '@aws-sdk/client-sns';
 
-let sns: SNSClient | undefined;
-
-const getEnvValue = (name: string) => {
-  const value = process.env[name]?.trim();
-  return value || undefined;
-};
-
-const getSnsCredentials = () => {
-  const accessKeyId = getEnvValue('AWS_ACCESS_KEY_ID');
-  const secretAccessKey = getEnvValue('AWS_SECRET_ACCESS_KEY');
-  const sessionToken = getEnvValue('AWS_SESSION_TOKEN');
-
-  if (!accessKeyId || !secretAccessKey) {
-    throw new Error(
-      'SNS AWS credentials are not configured. Set SNS_AWS_ACCESS_KEY_ID and SNS_AWS_SECRET_ACCESS_KEY.',
-    );
-  }
-
-  if (accessKeyId.startsWith('ASIA') && !sessionToken) {
-    throw new Error(
-      'SNS_AWS_SESSION_TOKEN is required when using temporary AWS credentials.',
-    );
-  }
-
-  return {
-    accessKeyId,
-    secretAccessKey,
-    ...(sessionToken ? { sessionToken } : {}),
+type SnsOptions = {
+  region: string;
+  credentials: {
+    accessKeyId: string;
+    secretAccessKey: string;
+    sessionToken?: string;
   };
 };
 
-const getSnsClient = () => {
-  sns ??= new SNSClient({
-    region: getEnvValue('SNS_REGION') ?? 'us-east-1',
-    credentials: getSnsCredentials(),
-  });
-
-  return sns;
+type StockPriceDecreaseMessage = {
+  stockId: string;
+  symbol: string;
+  oldPrice: number;
+  newPrice: number;
+  currency?: string;
 };
 
-export async function subscribeUser(userEmail: string, topicArn: string) {
-  const response = await getSnsClient().send(
+const createSnsClient = (options: SnsOptions) => new SNSClient(options);
+
+const createStockFilterPolicy = (stockIds: string[]) =>
+  JSON.stringify({
+    stockId: stockIds.length ? stockIds : ['__NO_SUBSCRIBED_STOCKS__'],
+  });
+
+export async function subscribeUser(
+  userEmail: string,
+  topicArn: string,
+  stockIds: string[],
+  options: SnsOptions,
+) {
+  const response = await createSnsClient(options).send(
     new SubscribeCommand({
       TopicArn: topicArn,
       Protocol: 'email',
       Endpoint: userEmail,
       ReturnSubscriptionArn: true,
+      Attributes: {
+        FilterPolicy: createStockFilterPolicy(stockIds),
+      },
     }),
   );
 
@@ -56,21 +53,29 @@ export async function subscribeUser(userEmail: string, topicArn: string) {
   };
 }
 
-type StockPriceDecreaseMessage = {
-  symbol: string;
-  oldPrice: number;
-  newPrice: number;
-  currency?: string;
-};
+export async function updateUserStockSubscriptionFilter(
+  subscriptionArn: string,
+  stockIds: string[],
+  options: SnsOptions,
+) {
+  await createSnsClient(options).send(
+    new SetSubscriptionAttributesCommand({
+      SubscriptionArn: subscriptionArn,
+      AttributeName: 'FilterPolicy',
+      AttributeValue: createStockFilterPolicy(stockIds),
+    }),
+  );
+}
 
 export async function publishStockPriceDecrease(
   topicArn: string,
   input: StockPriceDecreaseMessage,
+  options: SnsOptions,
 ) {
   const symbol = input.symbol.toUpperCase();
   const currency = input.currency ?? 'USD';
 
-  const response = await getSnsClient().send(
+  const response = await createSnsClient(options).send(
     new PublishCommand({
       TopicArn: topicArn,
       Subject: `${symbol} price decreased`,
@@ -80,6 +85,10 @@ export async function publishStockPriceDecrease(
         `New price: ${input.newPrice} ${currency}`,
       ].join('\n'),
       MessageAttributes: {
+        stockId: {
+          DataType: 'String',
+          StringValue: input.stockId,
+        },
         symbol: {
           DataType: 'String',
           StringValue: symbol,

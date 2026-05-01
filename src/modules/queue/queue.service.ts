@@ -423,6 +423,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 
     if (currentStock && input.price < currentStock.currentPrice) {
       await this.publishPriceDecreaseNotification({
+        stockId: currentStock._id.toString(),
         symbol: input.symbol,
         oldPrice: currentStock.currentPrice,
         newPrice: input.price,
@@ -434,12 +435,13 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async publishPriceDecreaseNotification(input: {
+    stockId: string;
     symbol: string;
     oldPrice: number;
     newPrice: number;
     currency?: string;
   }) {
-    const topicArn = this.appConfigService.getSnsTopicArnForStock(input.symbol);
+    const topicArn = this.appConfigService.snsTopicArn;
 
     if (!topicArn) {
       this.logger.warnWithMeta(
@@ -451,10 +453,14 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      const result = await publishStockPriceDecrease(topicArn, input);
+      const result = await publishStockPriceDecrease(topicArn, input, {
+        region: this.appConfigService.snsRegion,
+        credentials: this.appConfigService.snsCredentials,
+      });
       this.logger.info(
         'Published stock price decrease notification',
         {
+          stockId: input.stockId,
           symbol: input.symbol,
           oldPrice: input.oldPrice,
           newPrice: input.newPrice,

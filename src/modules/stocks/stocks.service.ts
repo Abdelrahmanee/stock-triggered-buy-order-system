@@ -5,16 +5,25 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { StockSource } from '../../common/constants/stock-source.constant';
-import { subscribeUser } from '../../common/providers/sns.subscribe-topic-provider';
+import {
+  subscribeUser,
+  updateUserStockSubscriptionFilter,
+} from '../../common/providers/sns.subscribe-topic-provider';
 import { AppConfigService } from '../../config/app-config.service';
+import {
+  StockSubscription,
+  StockSubscriptionDocument,
+} from './schemas/stock-subscription.schema';
 import { Stock, StockDocument } from './schemas/stock.schema';
 
 @Injectable()
 export class StocksService implements OnModuleInit {
   constructor(
     @InjectModel(Stock.name) private readonly stockModel: Model<StockDocument>,
+    @InjectModel(StockSubscription.name)
+    private readonly stockSubscriptionModel: Model<StockSubscriptionDocument>,
     private readonly appConfigService: AppConfigService,
   ) {}
 
@@ -116,17 +125,70 @@ export class StocksService implements OnModuleInit {
     return stock.currentPrice;
   }
 
-  async subscribeUserToStock(userEmail: string, symbol: string) {
+  async subscribeUserToStock(
+    userId: string,
+    userEmail: string,
+    symbol: string,
+  ) {
     const stock = await this.getStockBySymbol(symbol);
-    const topicArn = this.appConfigService.getSnsTopicArnForStock(stock.symbol);
+    const topicArn = this.appConfigService.snsTopicArn;
 
-    if (!topicArn) {
-      throw new InternalServerErrorException(
-        `SNS topic ARN is not configured for stock ${stock.symbol}`,
+
+    const userObjectId = new Types.ObjectId(userId);
+    const existingSubscription = await this.stockSubscriptionModel
+      .findOne({ userId: userObjectId })
+      .lean();
+
+    const subscription = await this.stockSubscriptionModel
+      .findOneAndUpdate(
+        { userId: userObjectId },
+        {
+          $set: {
+            email: userEmail.toLowerCase(),
+          },
+          $addToSet: {
+            subscribedStocks: stock._id,
+          },
+        },
+        {
+          upsert: true,
+          returnDocument: 'after',
+          lean: true,
+        },
+      )
+      .exec();
+
+    const subscribedStockIds = (subscription?.subscribedStocks ?? []).map(
+      (stockId) => stockId.toString(),
+    );
+
+    let subscriptionArn = existingSubscription?.snsSubscriptionArn;
+    if (!subscriptionArn) {
+      const snsSubscription = await subscribeUser(
+        userEmail,
+        topicArn,
+        subscribedStockIds,
+        {
+          region: this.appConfigService.snsRegion,
+          credentials: this.appConfigService.snsCredentials,
+        },
+      );
+      subscriptionArn = snsSubscription.subscriptionArn;
+
+      await this.stockSubscriptionModel.updateOne(
+        { userId: userObjectId },
+        { $set: { snsSubscriptionArn: subscriptionArn } },
+      );
+    } else {
+      await updateUserStockSubscriptionFilter(
+        subscriptionArn,
+        subscribedStockIds,
+        {
+          region: this.appConfigService.snsRegion,
+          credentials: this.appConfigService.snsCredentials,
+        },
       );
     }
-
-    const subscription = await subscribeUser(userEmail, topicArn);
 
     return {
       message:
@@ -134,7 +196,47 @@ export class StocksService implements OnModuleInit {
       stock: stock.symbol,
       email: userEmail,
       topicArn,
-      subscriptionArn: subscription.subscriptionArn,
+      subscriptionArn,
+      subscribedStocks: subscription?.subscribedStocks ?? [],
+    };
+  }
+
+  async unsubscribeUserFromStock(userId: string, symbol: string) {
+    const stock = await this.getStockBySymbol(symbol);
+    const subscription = await this.stockSubscriptionModel
+      .findOneAndUpdate(
+        { userId: new Types.ObjectId(userId) },
+        {
+          $pull: {
+            subscribedStocks: stock._id,
+          },
+        },
+        {
+          returnDocument: 'after',
+          lean: true,
+        },
+      )
+      .exec();
+
+    if (!subscription) {
+      throw new NotFoundException('User stock subscription not found');
+    }
+
+    if (subscription.snsSubscriptionArn) {
+      await updateUserStockSubscriptionFilter(
+        subscription.snsSubscriptionArn,
+        subscription.subscribedStocks.map((stockId) => stockId.toString()),
+        {
+          region: this.appConfigService.snsRegion,
+          credentials: this.appConfigService.snsCredentials,
+        },
+      );
+    }
+
+    return {
+      message: 'Stock unsubscribed successfully.',
+      stock: stock.symbol,
+      subscribedStocks: subscription.subscribedStocks,
     };
   }
 

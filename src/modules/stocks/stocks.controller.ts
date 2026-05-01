@@ -1,4 +1,11 @@
-import { Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { JwtPayload } from '../../common/interfaces/jwt-payload.interface';
@@ -24,6 +31,19 @@ export class StocksController {
     @CurrentUser() user: JwtPayload,
     @Param('symbol') symbol: string,
   ) {
-    return this.stocksService.subscribeUserToStock(user.email, symbol);
+    return this.stocksService.subscribeUserToStock(
+      user.sub,
+      user.email,
+      symbol,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete(':symbol/subscribe')
+  unsubscribeFromStock(
+    @CurrentUser() user: JwtPayload,
+    @Param('symbol') symbol: string,
+  ) {
+    return this.stocksService.unsubscribeUserFromStock(user.sub, symbol);
   }
 }
