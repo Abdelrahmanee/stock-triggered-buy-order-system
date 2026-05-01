@@ -1,0 +1,1 @@
+export const STOCK_PRICE_PROVIDER = Symbol('STOCK_PRICE_PROVIDER');

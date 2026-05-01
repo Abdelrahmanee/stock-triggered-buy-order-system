@@ -1,0 +1,21 @@
+version: '3.9'
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: stock-trigger-mongodb
+    restart: unless-stopped
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    container_name: stock-trigger-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+
+volumes:
+  mongo_data:

@@ -1,0 +1,438 @@
+{
+  "info": {
+    "_postman_id": "b6fd1ef3-724f-4cf1-b824-0a0f4ef55f9c",
+    "name": "Stock Triggered Buy Order System",
+    "description": "Postman collection for the NestJS + MongoDB price-triggered buy order MVP. Import this collection and the optional environment file, then run the requests in order. Auth requests automatically store `accessToken`, and order creation automatically stores `orderId`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.request.headers.upsert({ key: 'Accept', value: 'application/json' });"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "orderId",
+      "value": ""
+    },
+    {
+      "key": "stockSymbol",
+      "value": "AAPL"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "description": "Register and log in a user. These requests store the JWT in `accessToken`.",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Alice Trader\",\n  \"email\": \"alice@example.com\",\n  \"password\": \"secret123\",\n  \"walletBalance\": 1000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "description": "Creates a new user and returns `{ user, accessToken }`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Access token is returned', function () {",
+                  "  pm.expect(json.accessToken).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.collectionVariables.set('accessToken', json.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"alice@example.com\",\n  \"password\": \"secret123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Logs in an existing user and refreshes the saved `accessToken`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('accessToken', json.accessToken);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "description": "Authenticated user endpoints.",
+      "item": [
+        {
+          "name": "Get Current User",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Returns the current authenticated user profile."
+          }
+        },
+        {
+          "name": "Deposit To Wallet",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 500\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me/wallet",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "wallet"
+              ]
+            },
+            "description": "Adds funds to the authenticated user's wallet balance."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stocks",
+      "description": "Public stock catalog and latest price snapshot endpoints.",
+      "item": [
+        {
+          "name": "List Stocks",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/stocks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stocks"
+              ]
+            },
+            "description": "Returns the tracked stock list."
+          }
+        },
+        {
+          "name": "Get Stock By Symbol",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/stocks/{{stockSymbol}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stocks",
+                "{{stockSymbol}}"
+              ]
+            },
+            "description": "Returns one stock by symbol, for example `AAPL`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "description": "Authenticated price-triggered buy order flow.",
+      "item": [
+        {
+          "name": "Create Buy Trigger Order",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symbol\": \"AAPL\",\n  \"targetPrice\": 170,\n  \"quantity\": 2\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/buy-trigger",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "buy-trigger"
+              ]
+            },
+            "description": "Creates a pending buy order that executes when the stock price becomes less than or equal to the target."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('orderId', json._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List My Orders",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ]
+            },
+            "description": "Lists orders for the current user."
+          }
+        },
+        {
+          "name": "Get Order By Id",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}"
+              ]
+            },
+            "description": "Fetches a single order using the saved `orderId`."
+          }
+        },
+        {
+          "name": "Cancel Order",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}",
+                "cancel"
+              ]
+            },
+            "description": "Cancels a pending or triggered order."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Price Events",
+      "description": "Webhook-style price ingestion. Use this to trigger evaluation and execution flows manually.",
+      "item": [
+        {
+          "name": "Push Price Update",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symbol\": \"AAPL\",\n  \"name\": \"Apple Inc.\",\n  \"price\": 169,\n  \"currency\": \"USD\",\n  \"source\": \"webhook\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stock-events/price-update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stock-events",
+                "price-update"
+              ]
+            },
+            "description": "Creates a price event and triggers background order evaluation for the symbol."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Flow Examples",
+      "description": "Suggested manual testing order in Postman.",
+      "item": [
+        {
+          "name": "MVP Happy Path Notes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/stocks/AAPL",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stocks",
+                "AAPL"
+              ]
+            },
+            "description": "Suggested sequence:\n1. Register\n2. Get Current User\n3. Create Buy Trigger Order with targetPrice below current market price or use a future target\n4. Push Price Update with a price less than or equal to the target\n5. Get Order By Id\n6. Get Current User again to confirm wallet deduction"
+          }
+        }
+      ]
+    }
+  ]
+}
