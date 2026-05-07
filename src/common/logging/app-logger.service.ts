@@ -10,7 +10,14 @@ import { RequestContextService } from './request-context.service';
 export class AppLogger extends ConsoleLogger implements LoggerService {
   constructor(private readonly requestContextService: RequestContextService) {
     super(undefined, {
-      logLevels: ['log', 'error', 'warn', 'debug', 'verbose', 'fatal'] as LogLevel[],
+      logLevels: [
+        'log',
+        'error',
+        'warn',
+        'debug',
+        'verbose',
+        'fatal',
+      ] as LogLevel[],
     });
   }
 
@@ -63,10 +70,7 @@ export class AppLogger extends ConsoleLogger implements LoggerService {
     super.verbose(this.normalizeMessage(message), context);
   }
 
-  private buildPayload(
-    message: string,
-    meta?: Record<string, unknown>,
-  ) {
+  private buildPayload(message: string, meta?: Record<string, unknown>) {
     return {
       message,
       ...this.buildBaseMetadata(),

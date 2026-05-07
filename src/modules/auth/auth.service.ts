@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { UserRole } from '../../common/constants/user-role.constant';
 import { AppLogger } from '../../common/logging/app-logger.service';
 import { AppConfigService } from '../../config/app-config.service';
 import { UsersService } from '../users/users.service';
@@ -49,7 +50,12 @@ export class AuthService {
       walletBalance: dto.walletBalance ?? 0,
     });
 
-    const token = await this.signToken(user.id, user.email, user.status);
+    const token = await this.signToken(
+      user.id,
+      user.email,
+      user.status,
+      user.role ?? UserRole.USER,
+    );
     this.logger.info(
       'User registration completed',
       { userId: user.id, email: user.email },
@@ -88,6 +94,7 @@ export class AuthService {
       user._id.toString(),
       user.email,
       user.status,
+      user.role ?? UserRole.USER,
     );
 
     const { password, ...safeUser } = user;
@@ -99,7 +106,12 @@ export class AuthService {
     return { user: safeUser, accessToken: token };
   }
 
-  private async signToken(sub: string, email: string, status: string) {
-    return this.jwtService.signAsync({ sub, email, status });
+  private async signToken(
+    sub: string,
+    email: string,
+    status: string,
+    role: UserRole,
+  ) {
+    return this.jwtService.signAsync({ sub, email, status, role });
   }
 }

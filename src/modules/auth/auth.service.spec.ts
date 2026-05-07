@@ -1,6 +1,7 @@
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { UserRole } from '../../common/constants/user-role.constant';
 import { AppLogger } from '../../common/logging/app-logger.service';
 import { AppConfigService } from '../../config/app-config.service';
 import { UsersService } from '../users/users.service';
@@ -46,11 +47,13 @@ describe('AuthService', () => {
       id: 'user-id',
       email: 'user@example.com',
       status: 'active',
+      role: UserRole.USER,
       toJSON: () => ({
         id: 'user-id',
         email: 'user@example.com',
         name: 'User',
         walletBalance: 100,
+        role: UserRole.USER,
       }),
     } as any);
 
@@ -67,10 +70,40 @@ describe('AuthService', () => {
       email: 'user@example.com',
       name: 'User',
       walletBalance: 100,
+      role: UserRole.USER,
     });
 
     const createInput = usersService.create.mock.calls[0][0];
     expect(await bcrypt.compare('secret123', createInput.password)).toBe(true);
+    expect(jwtService.signAsync).toHaveBeenCalledWith({
+      sub: 'user-id',
+      email: 'user@example.com',
+      status: 'active',
+      role: UserRole.USER,
+    });
+  });
+
+  it('includes an admin role in login tokens', async () => {
+    const password = await bcrypt.hash('secret123', 1);
+    usersService.findByEmail.mockResolvedValue({
+      _id: { toString: () => 'admin-id' },
+      email: 'admin@example.com',
+      password,
+      status: 'active',
+      role: UserRole.ADMIN,
+    } as any);
+
+    await authService.login({
+      email: 'admin@example.com',
+      password: 'secret123',
+    });
+
+    expect(jwtService.signAsync).toHaveBeenCalledWith({
+      sub: 'admin-id',
+      email: 'admin@example.com',
+      status: 'active',
+      role: UserRole.ADMIN,
+    });
   });
 
   it('rejects duplicate registrations', async () => {

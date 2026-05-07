@@ -34,8 +34,16 @@ export class AppConfigService {
     return this.configService.get<string>('REDIS_HOST', '127.0.0.1');
   }
 
+  get analyticsPort(): number {
+    return Number(this.configService.get<string>('ANALYTICS_PORT', '3001'));
+  }
+
   get snsTopicArn(): string {
     return this.getOptionalString('SNS_TOPIC_ARN');
+  }
+
+  get snsEnabled(): boolean {
+    return this.getOptionalString('SNS_ENABLED') === 'true';
   }
 
   getSnsTopicArnForStock(symbol: string): string {
@@ -57,13 +65,57 @@ export class AppConfigService {
 
     if (!accessKeyId || !secretAccessKey) {
       throw new Error(
-        'SNS AWS credentials are not configured. Set SNS_AWS_ACCESS_KEY_ID and SNS_AWS_SECRET_ACCESS_KEY.',
+        'SNS AWS credentials are not configured. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.',
       );
     }
 
     if (accessKeyId.startsWith('ASIA') && !sessionToken) {
       throw new Error(
-        'SNS_AWS_SESSION_TOKEN is required when using temporary AWS credentials.',
+        'AWS_SESSION_TOKEN is required when using temporary AWS credentials.',
+      );
+    }
+
+    return {
+      accessKeyId,
+      secretAccessKey,
+      ...(sessionToken ? { sessionToken } : {}),
+    };
+  }
+
+  get analyticsEventsTopicArn(): string {
+    return this.getOptionalString('ANALYTICS_EVENTS_TOPIC_ARN');
+  }
+
+  get analyticsEventsQueueUrl(): string {
+    return this.getOptionalString('ANALYTICS_EVENTS_QUEUE_URL');
+  }
+
+  get analyticsConsumerEnabled(): boolean {
+    return this.getOptionalString('ANALYTICS_CONSUMER_ENABLED') === 'true';
+  }
+
+  get sesEnabled(): boolean {
+    return this.getOptionalString('SES_ENABLED') === 'true';
+  }
+
+  get analyticsAwsRegion(): string {
+    return this.getOptionalString('ANALYTICS_AWS_REGION') || 'us-east-1';
+  }
+
+  get analyticsAwsCredentials(): AwsCredentials {
+    const accessKeyId = this.getOptionalString('AWS_ACCESS_KEY_ID');
+    const secretAccessKey = this.getOptionalString('AWS_SECRET_ACCESS_KEY');
+    const sessionToken = this.getOptionalString('AWS_SESSION_TOKEN');
+
+    if (!accessKeyId || !secretAccessKey) {
+      throw new Error(
+        'Analytics AWS credentials are not configured. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.',
+      );
+    }
+
+    if (accessKeyId.startsWith('ASIA') && !sessionToken) {
+      throw new Error(
+        'AWS_SESSION_TOKEN is required when using temporary AWS credentials.',
       );
     }
 

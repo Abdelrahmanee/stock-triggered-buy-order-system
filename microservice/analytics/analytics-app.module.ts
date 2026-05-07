@@ -3,19 +3,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
 import { StringValue } from 'ms';
-import { AppConfigModule } from './config/app-config.module';
-import { AnalyticsEventsModule } from './common/analytics/analytics-events.module';
-import { LoggingModule } from './common/logging/logging.module';
-import { RequestContextMiddleware } from './common/logging/request-context.middleware';
-import { AuthModule } from './modules/auth/auth.module';
-import { PortfolioModule } from './modules/portfolio/portfolio.module';
-import { QueueModule } from './modules/queue/queue.module';
-import { StocksModule } from './modules/stocks/stocks.module';
-import { StockProviderModule } from './modules/stock-provider/stock-provider.module';
-import { UsersModule } from './modules/users/users.module';
-import { WalletModule } from './modules/wallet/wallet.module';
-import { OrdersModule } from './modules/orders/orders.module';
-import { PriceEventsModule } from './modules/price-events/price-events.module';
+import { AppConfigModule } from '../../src/config/app-config.module';
+import { LoggingModule } from '../../src/common/logging/logging.module';
+import { RequestContextMiddleware } from '../../src/common/logging/request-context.middleware';
+import { AnalyticsModule } from './analytics.module';
 
 @Module({
   imports: [
@@ -25,7 +16,6 @@ import { PriceEventsModule } from './modules/price-events/price-events.module';
     }),
     AppConfigModule,
     LoggingModule,
-    AnalyticsEventsModule,
     JwtModule.registerAsync({
       global: true,
       inject: [ConfigService],
@@ -48,18 +38,10 @@ import { PriceEventsModule } from './modules/price-events/price-events.module';
         ),
       }),
     }),
-    QueueModule,
-    AuthModule,
-    UsersModule,
-    WalletModule,
-    StocksModule,
-    StockProviderModule,
-    PriceEventsModule,
-    PortfolioModule,
-    OrdersModule,
+    AnalyticsModule,
   ],
 })
-export class AppModule implements NestModule {
+export class AnalyticsAppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(RequestContextMiddleware).forRoutes('*');
   }

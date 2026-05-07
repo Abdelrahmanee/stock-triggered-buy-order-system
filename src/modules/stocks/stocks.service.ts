@@ -5,13 +5,16 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { randomUUID } from 'crypto';
 import { Model, Types } from 'mongoose';
+import { AnalyticsEventPublisher } from '../../common/analytics/analytics-event-publisher.service';
 import { StockSource } from '../../common/constants/stock-source.constant';
 import {
   subscribeUser,
   updateUserStockSubscriptionFilter,
 } from '../../common/providers/sns.subscribe-topic-provider';
 import { AppConfigService } from '../../config/app-config.service';
+import { AnalyticsEventType } from '../../../microservice/analytics/events/analytics-events';
 import {
   StockSubscription,
   StockSubscriptionDocument,
@@ -25,6 +28,7 @@ export class StocksService implements OnModuleInit {
     @InjectModel(StockSubscription.name)
     private readonly stockSubscriptionModel: Model<StockSubscriptionDocument>,
     private readonly appConfigService: AppConfigService,
+    private readonly analyticsEventPublisher: AnalyticsEventPublisher,
   ) {}
 
   async onModuleInit() {
@@ -133,6 +137,9 @@ export class StocksService implements OnModuleInit {
     const stock = await this.getStockBySymbol(symbol);
     const topicArn = this.appConfigService.snsTopicArn;
 
+    if (!topicArn) {
+      throw new InternalServerErrorException('SNS topic ARN is not configured');
+    }
 
     const userObjectId = new Types.ObjectId(userId);
     const existingSubscription = await this.stockSubscriptionModel
@@ -190,6 +197,17 @@ export class StocksService implements OnModuleInit {
       );
     }
 
+    await this.analyticsEventPublisher.publish({
+      eventId: `${AnalyticsEventType.STOCK_SUBSCRIPTION_CHANGED}:${randomUUID()}`,
+      eventType: AnalyticsEventType.STOCK_SUBSCRIPTION_CHANGED,
+      occurredAt: new Date().toISOString(),
+      userId,
+      payload: {
+        email: userEmail.toLowerCase(),
+        subscribedStockIds,
+      },
+    });
+
     return {
       message:
         'Subscription request created. Check your email to confirm the SNS subscription.',
@@ -232,6 +250,19 @@ export class StocksService implements OnModuleInit {
         },
       );
     }
+
+    await this.analyticsEventPublisher.publish({
+      eventId: `${AnalyticsEventType.STOCK_SUBSCRIPTION_CHANGED}:${randomUUID()}`,
+      eventType: AnalyticsEventType.STOCK_SUBSCRIPTION_CHANGED,
+      occurredAt: new Date().toISOString(),
+      userId,
+      payload: {
+        email: subscription.email,
+        subscribedStockIds: subscription.subscribedStocks.map((stockId) =>
+          stockId.toString(),
+        ),
+      },
+    });
 
     return {
       message: 'Stock unsubscribed successfully.',

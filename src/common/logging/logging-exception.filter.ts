@@ -35,7 +35,7 @@ export class LoggingExceptionFilter implements ExceptionFilter {
         error:
           typeof exceptionResponse === 'string'
             ? exceptionResponse
-            : exceptionResponse ?? 'Internal server error',
+            : (exceptionResponse ?? 'Internal server error'),
       },
       LoggingExceptionFilter.name,
     );

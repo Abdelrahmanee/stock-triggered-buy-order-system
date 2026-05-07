@@ -9,6 +9,8 @@
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
+    "start:analytics": "ts-node -r tsconfig-paths/register microservice/analytics/main.ts",
+    "start:analytics:dev": "node --watch -r ts-node/register -r tsconfig-paths/register microservice/analytics/main.ts",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
@@ -22,6 +24,7 @@
   "dependencies": {
     "@aws-sdk/client-ses": "^3.1040.0",
     "@aws-sdk/client-sns": "^3.1040.0",
+    "@aws-sdk/client-sqs": "^3.1041.0",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^10.0.0",

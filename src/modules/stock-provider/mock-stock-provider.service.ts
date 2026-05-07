@@ -28,7 +28,9 @@ export class MockStockProviderService implements StockPriceProvider {
     };
   }
 
-  async syncTrackedSymbols(symbols: string[]): Promise<NormalizedPriceUpdate[]> {
+  async syncTrackedSymbols(
+    symbols: string[],
+  ): Promise<NormalizedPriceUpdate[]> {
     return Promise.all(symbols.map((symbol) => this.getCurrentPrice(symbol)));
   }
 

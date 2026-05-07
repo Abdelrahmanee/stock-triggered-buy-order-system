@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { UserRole } from '../../common/constants/user-role.constant';
 import { User, UserDocument } from './schemas/user.schema';
 
 @Injectable()
@@ -9,13 +10,13 @@ export class UsersService {
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
   ) {}
 
-  async findAll() {
-  }
+  async findAll() {}
   async create(input: {
     name: string;
     email: string;
     password: string;
     walletBalance?: number;
+    role?: UserRole;
   }) {
     return this.userModel.create(input);
   }

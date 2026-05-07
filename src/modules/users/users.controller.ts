@@ -21,10 +21,7 @@ export class UsersController {
 
   @UseGuards(JwtAuthGuard)
   @Patch('me/wallet')
-  async deposit(
-    @CurrentUser() user: JwtPayload,
-    @Body() dto: UpdateWalletDto,
-  ) {
+  async deposit(@CurrentUser() user: JwtPayload, @Body() dto: UpdateWalletDto) {
     return this.walletService.deposit(user.sub, dto.amount);
   }
 }

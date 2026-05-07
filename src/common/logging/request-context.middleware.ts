@@ -5,9 +5,7 @@ import { RequestContextService } from './request-context.service';
 
 @Injectable()
 export class RequestContextMiddleware implements NestMiddleware {
-  constructor(
-    private readonly requestContextService: RequestContextService,
-  ) {}
+  constructor(private readonly requestContextService: RequestContextService) {}
 
   use(
     request: Request & { traceId?: string },

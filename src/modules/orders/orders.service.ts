@@ -5,9 +5,15 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import {
+  AnalyticsEventPublisher,
+  createAnalyticsEventId,
+} from '../../common/analytics/analytics-event-publisher.service';
 import { BuyOrderStatus } from '../../common/constants/order-status.constant';
 import { AppLogger } from '../../common/logging/app-logger.service';
 import { sendEmailNotification } from '../../common/providers/ses.send-email-provider';
+import { AppConfigService } from '../../config/app-config.service';
+import { AnalyticsEventType } from '../../../microservice/analytics/events/analytics-events';
 import { QueueService } from '../queue/queue.service';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { StocksService } from '../stocks/stocks.service';
@@ -33,6 +39,8 @@ export class OrdersService {
     private readonly portfolioService: PortfolioService,
     private readonly queueService: QueueService,
     private readonly logger: AppLogger,
+    private readonly analyticsEventPublisher: AnalyticsEventPublisher,
+    private readonly appConfigService: AppConfigService,
   ) {}
 
   private toObjectId(value: string, fieldName: string) {
@@ -92,6 +100,27 @@ export class OrdersService {
       },
       OrdersService.name,
     );
+    console.log(
+      `Buy order created: userId=${userId}, orderId=${order._id.toString()}, symbol=${order.symbol}, status=${order.status}`,
+    );
+
+    await this.analyticsEventPublisher.publish({
+      eventId: createAnalyticsEventId(
+        AnalyticsEventType.ORDER_CREATED,
+        order._id.toString(),
+      ),
+      eventType: AnalyticsEventType.ORDER_CREATED,
+      occurredAt: new Date().toISOString(),
+      userId,
+      payload: {
+        orderId: order._id.toString(),
+        symbol: order.symbol,
+        quantity: order.quantity,
+        price: order.targetPrice,
+        status: order.status,
+      },
+    });
+
     return order.toJSON();
   }
 
@@ -145,6 +174,24 @@ export class OrdersService {
       { userId, orderId, status: order.status },
       OrdersService.name,
     );
+
+    await this.analyticsEventPublisher.publish({
+      eventId: createAnalyticsEventId(
+        AnalyticsEventType.ORDER_CANCELLED,
+        orderId,
+      ),
+      eventType: AnalyticsEventType.ORDER_CANCELLED,
+      occurredAt: new Date().toISOString(),
+      userId,
+      payload: {
+        orderId,
+        symbol: order.symbol,
+        quantity: order.quantity,
+        price: order.targetPrice,
+        status: order.status,
+      },
+    });
+
     return order;
   }
 
@@ -180,6 +227,23 @@ export class OrdersService {
         },
         OrdersService.name,
       );
+
+      await this.analyticsEventPublisher.publish({
+        eventId: createAnalyticsEventId(
+          AnalyticsEventType.ORDER_TRIGGERED,
+          orderId,
+        ),
+        eventType: AnalyticsEventType.ORDER_TRIGGERED,
+        occurredAt: new Date().toISOString(),
+        userId: order.userId.toString(),
+        payload: {
+          orderId,
+          symbol: order.symbol,
+          quantity: order.quantity,
+          price: order.targetPrice,
+          status: order.status,
+        },
+      });
     }
 
     return order;
@@ -277,6 +341,23 @@ export class OrdersService {
         },
         OrdersService.name,
       );
+      await this.analyticsEventPublisher.publish({
+        eventId: createAnalyticsEventId(
+          AnalyticsEventType.ORDER_FAILED,
+          orderId,
+        ),
+        eventType: AnalyticsEventType.ORDER_FAILED,
+        occurredAt: new Date().toISOString(),
+        userId: order.userId.toString(),
+        payload: {
+          orderId,
+          symbol: order.symbol,
+          quantity: order.quantity,
+          price: stock.currentPrice,
+          totalCost,
+          status: BuyOrderStatus.FAILED,
+        },
+      });
       return null;
     }
 
@@ -310,30 +391,36 @@ export class OrdersService {
       },
     );
 
-    try {
-      const user = await this.usersService.findById(order.userId);
-      this.logger.info(
-        'Sending order execution email notification',
-        {
-          orderId,
-          userId: order.userId.toString(),
-          email: user.email,
-          symbol: order.symbol,
-          executedPrice: stock.currentPrice,
-        },
-        OrdersService.name,
-      );
-      await sendEmailNotification(user.email, order.symbol, stock.currentPrice);
-    } catch (error) {
-      this.logger.warnWithMeta(
-        'Order execution email notification failed',
-        {
-          orderId,
-          userId: order.userId.toString(),
-          error: error instanceof Error ? error.message : String(error),
-        },
-        OrdersService.name,
-      );
+    if (this.appConfigService.sesEnabled) {
+      try {
+        const user = await this.usersService.findById(order.userId);
+        this.logger.info(
+          'Sending order execution email notification',
+          {
+            orderId,
+            userId: order.userId.toString(),
+            email: user.email,
+            symbol: order.symbol,
+            executedPrice: stock.currentPrice,
+          },
+          OrdersService.name,
+        );
+        await sendEmailNotification(
+          user.email,
+          order.symbol,
+          stock.currentPrice,
+        );
+      } catch (error) {
+        this.logger.warnWithMeta(
+          'Order execution email notification failed',
+          {
+            orderId,
+            userId: order.userId.toString(),
+            error: error instanceof Error ? error.message : String(error),
+          },
+          OrdersService.name,
+        );
+      }
     }
 
     this.logger.info(
@@ -349,6 +436,25 @@ export class OrdersService {
       },
       OrdersService.name,
     );
+
+    await this.analyticsEventPublisher.publish({
+      eventId: createAnalyticsEventId(
+        AnalyticsEventType.ORDER_EXECUTED,
+        orderId,
+      ),
+      eventType: AnalyticsEventType.ORDER_EXECUTED,
+      occurredAt: execution.executedAt.toISOString(),
+      userId: order.userId.toString(),
+      payload: {
+        orderId,
+        symbol: order.symbol,
+        quantity: order.quantity,
+        price: stock.currentPrice,
+        totalCost,
+        status: BuyOrderStatus.COMPLETED,
+      },
+    });
+
     return execution.toJSON();
   }
 

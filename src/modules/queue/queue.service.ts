@@ -7,6 +7,10 @@ import {
 } from '@nestjs/common';
 import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
+import {
+  AnalyticsEventPublisher,
+  createAnalyticsEventId,
+} from '../../common/analytics/analytics-event-publisher.service';
 import { AppConfigService } from '../../config/app-config.service';
 import {
   JOB_NAMES,
@@ -16,6 +20,7 @@ import { StockSource } from '../../common/constants/stock-source.constant';
 import { AppLogger } from '../../common/logging/app-logger.service';
 import { RequestContextService } from '../../common/logging/request-context.service';
 import { publishStockPriceDecrease } from '../../common/providers/sns.subscribe-topic-provider';
+import { AnalyticsEventType } from '../../../microservice/analytics/events/analytics-events';
 import { OrdersService } from '../orders/orders.service';
 import { PriceEventsService } from '../price-events/price-events.service';
 import { STOCK_PRICE_PROVIDER } from '../stock-provider/stock-provider.tokens';
@@ -41,6 +46,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     private readonly logger: AppLogger,
     @Inject(STOCK_PRICE_PROVIDER)
     private readonly stockPriceProvider: StockPriceProvider,
+    private readonly analyticsEventPublisher: AnalyticsEventPublisher,
   ) {}
 
   async onModuleInit() {
@@ -406,14 +412,14 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
       .getStockBySymbol(input.symbol)
       .catch(() => null);
 
-    await this.priceEventsService.recordPriceEvent({
+    const priceEvent = await this.priceEventsService.recordPriceEvent({
       symbol: input.symbol,
       oldPrice: currentStock?.currentPrice,
       newPrice: input.price,
       source: input.source,
     });
 
-    await this.stocksService.upsertPrice({
+    const updatedStock = await this.stocksService.upsertPrice({
       symbol: input.symbol,
       name: input.name,
       price: input.price,
@@ -421,9 +427,25 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
       source: input.source,
     });
 
+    await this.analyticsEventPublisher.publish({
+      eventId: createAnalyticsEventId(
+        AnalyticsEventType.STOCK_PRICE_UPDATED,
+        priceEvent._id.toString(),
+      ),
+      eventType: AnalyticsEventType.STOCK_PRICE_UPDATED,
+      occurredAt: priceEvent.receivedAt.toISOString(),
+      payload: {
+        stockId: updatedStock._id.toString(),
+        symbol: updatedStock.symbol,
+        oldPrice: currentStock?.currentPrice,
+        newPrice: input.price,
+      },
+    });
+
     if (currentStock && input.price < currentStock.currentPrice) {
       await this.publishPriceDecreaseNotification({
         stockId: currentStock._id.toString(),
+        priceEventId: priceEvent._id.toString(),
         symbol: input.symbol,
         oldPrice: currentStock.currentPrice,
         newPrice: input.price,
@@ -436,6 +458,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 
   private async publishPriceDecreaseNotification(input: {
     stockId: string;
+    priceEventId: string;
     symbol: string;
     oldPrice: number;
     newPrice: number;
@@ -450,6 +473,34 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
         QueueService.name,
       );
       return;
+    }
+
+    try {
+      await this.analyticsEventPublisher.publish({
+        eventId: createAnalyticsEventId(
+          AnalyticsEventType.STOCK_PRICE_DECREASED,
+          input.priceEventId,
+        ),
+        eventType: AnalyticsEventType.STOCK_PRICE_DECREASED,
+        occurredAt: new Date().toISOString(),
+        payload: {
+          stockId: input.stockId,
+          symbol: input.symbol,
+          oldPrice: input.oldPrice,
+          newPrice: input.newPrice,
+        },
+      });
+    } catch (error) {
+      this.logger.warnWithMeta(
+        'Failed to publish analytics stock price decrease event',
+        {
+          symbol: input.symbol,
+          oldPrice: input.oldPrice,
+          newPrice: input.newPrice,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        QueueService.name,
+      );
     }
 
     try {
