@@ -50,6 +50,12 @@ export class UsersService {
     return user;
   }
 
+  async updateAvatar(userId: string, avatarUrl: string) {
+    return this.userModel
+      .findByIdAndUpdate(userId, { avatarUrl }, { returnDocument: 'after', lean: true })
+      .exec();
+  }
+
   async reserveFunds(userId: string, amount: number) {
     return this.userModel
       .findOneAndUpdate(

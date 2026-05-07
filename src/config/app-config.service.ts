@@ -148,6 +148,24 @@ export class AppConfigService {
     );
   }
 
+  get s3Bucket(): string {
+    return this.configService.get<string>('S3_BUCKET', '');
+  }
+
+  get s3Region(): string {
+    return this.configService.get<string>('S3_REGION', 'us-east-1');
+  }
+
+  get s3Credentials(): AwsCredentials {
+    const accessKeyId = this.getOptionalString('AWS_ACCESS_KEY_ID');
+    const secretAccessKey = this.getOptionalString('AWS_SECRET_ACCESS_KEY');
+    const sessionToken = this.getOptionalString('AWS_SESSION_TOKEN');
+    if (!accessKeyId || !secretAccessKey) {
+      throw new Error('S3 AWS credentials are not configured.');
+    }
+    return { accessKeyId, secretAccessKey, ...(sessionToken ? { sessionToken } : {}) };
+  }
+
   private getOptionalString(key: string): string {
     const value = this.configService.get<string>(key) ?? process.env[key];
     return value?.trim() ?? '';
