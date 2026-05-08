@@ -1,133 +1,96 @@
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt';
-import { UserRole } from '../../common/constants/user-role.constant';
+import {
+  CognitoIdentityProviderClient,
+  InitiateAuthCommand,
+  SignUpCommand,
+  UsernameExistsException,
+  NotAuthorizedException,
+} from '@aws-sdk/client-cognito-identity-provider';
+import { mockClient } from 'aws-sdk-client-mock';
 import { AppLogger } from '../../common/logging/app-logger.service';
 import { AppConfigService } from '../../config/app-config.service';
 import { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
 
+const cognitoMock = mockClient(CognitoIdentityProviderClient);
+
 describe('AuthService', () => {
   let authService: AuthService;
   let usersService: jest.Mocked<UsersService>;
-  let jwtService: jest.Mocked<JwtService>;
-  let appConfigService: AppConfigService;
   let logger: jest.Mocked<AppLogger>;
 
+  const config = {
+    cognitoRegion: 'us-east-1',
+    cognitoClientId: 'test-client-id',
+    cognitoUserPoolId: 'us-east-1_test',
+  } as AppConfigService;
+
   beforeEach(() => {
+    cognitoMock.reset();
+
     usersService = {
       findByEmail: jest.fn(),
       create: jest.fn(),
     } as unknown as jest.Mocked<UsersService>;
 
-    jwtService = {
-      signAsync: jest.fn().mockResolvedValue('signed-token'),
-    } as unknown as jest.Mocked<JwtService>;
+    logger = { info: jest.fn(), warnWithMeta: jest.fn() } as unknown as jest.Mocked<AppLogger>;
 
-    appConfigService = {
-      bcryptRounds: 1,
-    } as AppConfigService;
-
-    logger = {
-      info: jest.fn(),
-      warnWithMeta: jest.fn(),
-    } as unknown as jest.Mocked<AppLogger>;
-
-    authService = new AuthService(
-      usersService,
-      jwtService,
-      appConfigService,
-      logger,
-    );
+    authService = new AuthService(usersService, config, logger);
   });
 
-  it('registers a new user and returns a token without exposing the password', async () => {
-    usersService.findByEmail.mockResolvedValue(null);
+  it('registers a new user via Cognito and persists locally', async () => {
+    cognitoMock.on(SignUpCommand).resolves({ UserSub: 'cognito-sub' });
     usersService.create.mockResolvedValue({
-      id: 'user-id',
       email: 'user@example.com',
-      status: 'active',
-      role: UserRole.USER,
-      toJSON: () => ({
-        id: 'user-id',
-        email: 'user@example.com',
-        name: 'User',
-        walletBalance: 100,
-        role: UserRole.USER,
-      }),
+      toJSON: () => ({ email: 'user@example.com', name: 'User' }),
     } as any);
 
     const result = await authService.register({
       name: 'User',
       email: 'user@example.com',
-      password: 'secret123',
-      walletBalance: 100,
+      password: 'Secret123!',
     });
 
-    expect(result.accessToken).toBe('signed-token');
-    expect(result.user).toEqual({
-      id: 'user-id',
-      email: 'user@example.com',
-      name: 'User',
-      walletBalance: 100,
-      role: UserRole.USER,
-    });
-
-    const createInput = usersService.create.mock.calls[0][0];
-    expect(await bcrypt.compare('secret123', createInput.password)).toBe(true);
-    expect(jwtService.signAsync).toHaveBeenCalledWith({
-      sub: 'user-id',
-      email: 'user@example.com',
-      status: 'active',
-      role: UserRole.USER,
-    });
+    expect(result.user).toEqual({ email: 'user@example.com', name: 'User' });
+    expect(usersService.create).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'user@example.com', password: '' }),
+    );
   });
 
-  it('includes an admin role in login tokens', async () => {
-    const password = await bcrypt.hash('secret123', 1);
-    usersService.findByEmail.mockResolvedValue({
-      _id: { toString: () => 'admin-id' },
-      email: 'admin@example.com',
-      password,
-      status: 'active',
-      role: UserRole.ADMIN,
-    } as any);
-
-    await authService.login({
-      email: 'admin@example.com',
-      password: 'secret123',
-    });
-
-    expect(jwtService.signAsync).toHaveBeenCalledWith({
-      sub: 'admin-id',
-      email: 'admin@example.com',
-      status: 'active',
-      role: UserRole.ADMIN,
-    });
-  });
-
-  it('rejects duplicate registrations', async () => {
-    usersService.findByEmail.mockResolvedValue({
-      _id: 'existing',
-    } as any);
+  it('throws ConflictException when Cognito reports duplicate email', async () => {
+    cognitoMock.on(SignUpCommand).rejects(
+      new UsernameExistsException({ message: 'exists', $metadata: {} }),
+    );
 
     await expect(
-      authService.register({
-        name: 'User',
-        email: 'user@example.com',
-        password: 'secret123',
-      }),
+      authService.register({ name: 'User', email: 'dup@example.com', password: 'Secret123!' }),
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
-  it('rejects invalid login credentials', async () => {
-    usersService.findByEmail.mockResolvedValue(null);
+  it('returns Cognito tokens on successful login', async () => {
+    cognitoMock.on(InitiateAuthCommand).resolves({
+      AuthenticationResult: {
+        AccessToken: 'access',
+        IdToken: 'id',
+        RefreshToken: 'refresh',
+      },
+    });
+    usersService.findByEmail.mockResolvedValue({ email: 'user@example.com' } as any);
+
+    const result = await authService.login({ email: 'user@example.com', password: 'Secret123!' });
+
+    expect(result.accessToken).toBe('access');
+    expect(result.idToken).toBe('id');
+    expect(result.refreshToken).toBe('refresh');
+  });
+
+  it('throws UnauthorizedException on bad credentials', async () => {
+    cognitoMock.on(InitiateAuthCommand).rejects(
+      new NotAuthorizedException({ message: 'bad', $metadata: {} }),
+    );
 
     await expect(
-      authService.login({
-        email: 'missing@example.com',
-        password: 'secret123',
-      }),
+      authService.login({ email: 'user@example.com', password: 'wrong' }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 });

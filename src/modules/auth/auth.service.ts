@@ -1,117 +1,147 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt';
-import { UserRole } from '../../common/constants/user-role.constant';
+import {
+  CognitoIdentityProviderClient,
+  SignUpCommand,
+  InitiateAuthCommand,
+  ConfirmSignUpCommand,
+  UsernameExistsException,
+  NotAuthorizedException,
+  UserNotConfirmedException,
+  CodeMismatchException,
+  ExpiredCodeException,
+} from '@aws-sdk/client-cognito-identity-provider';
+import { createHmac } from 'crypto';
 import { AppLogger } from '../../common/logging/app-logger.service';
 import { AppConfigService } from '../../config/app-config.service';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 
 @Injectable()
 export class AuthService {
+  private readonly cognito: CognitoIdentityProviderClient;
+
   constructor(
     private readonly usersService: UsersService,
-    private readonly jwtService: JwtService,
-    private readonly appConfigService: AppConfigService,
+    private readonly config: AppConfigService,
     private readonly logger: AppLogger,
-  ) {}
+  ) {
+    this.cognito = new CognitoIdentityProviderClient({ region: config.cognitoRegion });
+  }
+
+  private computeSecretHash(username: string): string {
+    return createHmac('sha256', this.config.cognitoClientSecret)
+      .update(username + this.config.cognitoClientId)
+      .digest('base64');
+  }
 
   async register(dto: RegisterDto) {
-    this.logger.info(
-      'Attempting user registration',
-      { email: dto.email.toLowerCase() },
-      AuthService.name,
-    );
+    this.logger.info('Attempting user registration', { email: dto.email }, AuthService.name);
 
-    const existingUser = await this.usersService.findByEmail(dto.email);
-    if (existingUser) {
-      this.logger.warnWithMeta(
-        'Registration blocked because email already exists',
-        { email: dto.email.toLowerCase() },
-        AuthService.name,
+    try {
+      await this.cognito.send(
+        new SignUpCommand({
+          ClientId: this.config.cognitoClientId,
+          SecretHash: this.computeSecretHash(dto.email.toLowerCase()),
+          Username: dto.email.toLowerCase(),
+          Password: dto.password,
+          UserAttributes: [{ Name: 'email', Value: dto.email.toLowerCase() }],
+        }),
       );
-      throw new ConflictException('User with this email already exists');
+    } catch (err) {
+      if (err instanceof UsernameExistsException) {
+        throw new ConflictException('User with this email already exists');
+      }
+      throw err;
     }
-
-    const password = await bcrypt.hash(
-      dto.password,
-      this.appConfigService.bcryptRounds,
-    );
 
     const user = await this.usersService.create({
       name: dto.name,
       email: dto.email.toLowerCase(),
-      password,
+      password: '',
       walletBalance: dto.walletBalance ?? 0,
     });
 
-    const token = await this.signToken(
-      user.id,
-      user.email,
-      user.status,
-      user.role ?? UserRole.USER,
-    );
-    this.logger.info(
-      'User registration completed',
-      { userId: user.id, email: user.email },
-      AuthService.name,
-    );
-    return { user: user.toJSON(), accessToken: token };
+    this.logger.info('User registration completed', { email: user.email }, AuthService.name);
+    return { user: user.toJSON() };
+  }
+
+  async verifyEmail(dto: VerifyEmailDto) {
+    try {
+      await this.cognito.send(
+        new ConfirmSignUpCommand({
+          ClientId: this.config.cognitoClientId,
+          SecretHash: this.computeSecretHash(dto.email.toLowerCase()),
+          Username: dto.email.toLowerCase(),
+          ConfirmationCode: dto.code,
+        }),
+      );
+    } catch (err) {
+      if (err instanceof CodeMismatchException) throw new BadRequestException('Invalid verification code');
+      if (err instanceof ExpiredCodeException) throw new BadRequestException('Verification code has expired');
+      throw err;
+    }
+    return { message: 'Email verified successfully' };
+  }
+
+  async refreshToken(dto: RefreshTokenDto) {
+    try {
+      const result = await this.cognito.send(
+        new InitiateAuthCommand({
+          AuthFlow: 'REFRESH_TOKEN_AUTH',
+          ClientId: this.config.cognitoClientId,
+          AuthParameters: {
+            REFRESH_TOKEN: dto.refreshToken,
+            SECRET_HASH: this.computeSecretHash(dto.email.toLowerCase()),
+          },
+        }),
+      );
+      const auth = result.AuthenticationResult!;
+      return { accessToken: auth.AccessToken!, idToken: auth.IdToken! };
+    } catch (err) {
+      if (err instanceof NotAuthorizedException) throw new UnauthorizedException('Invalid or expired refresh token');
+      throw err;
+    }
   }
 
   async login(dto: LoginDto) {
-    this.logger.info(
-      'Attempting user login',
-      { email: dto.email.toLowerCase() },
-      AuthService.name,
-    );
+    this.logger.info('Attempting user login', { email: dto.email }, AuthService.name);
+
+    let tokens: { accessToken: string; idToken: string; refreshToken: string };
+    try {
+      const result = await this.cognito.send(
+        new InitiateAuthCommand({
+          AuthFlow: 'USER_PASSWORD_AUTH',
+          ClientId: this.config.cognitoClientId,
+          AuthParameters: {
+            USERNAME: dto.email.toLowerCase(),
+            PASSWORD: dto.password,
+            SECRET_HASH: this.computeSecretHash(dto.email.toLowerCase()),
+          },
+        }),
+      );
+      const auth = result.AuthenticationResult!;
+      tokens = {
+        accessToken: auth.AccessToken!,
+        idToken: auth.IdToken!,
+        refreshToken: auth.RefreshToken!,
+      };
+    } catch (err) {
+      if (err instanceof NotAuthorizedException || err instanceof UserNotConfirmedException) {
+        throw new UnauthorizedException('Invalid credentials');
+      }
+      throw err;
+    }
+
     const user = await this.usersService.findByEmail(dto.email);
-    if (!user) {
-      this.logger.warnWithMeta(
-        'Login failed because user was not found',
-        { email: dto.email.toLowerCase() },
-        AuthService.name,
-      );
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    const passwordMatches = await bcrypt.compare(dto.password, user.password);
-    if (!passwordMatches) {
-      this.logger.warnWithMeta(
-        'Login failed because password validation failed',
-        { userId: user._id.toString(), email: user.email },
-        AuthService.name,
-      );
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    const token = await this.signToken(
-      user._id.toString(),
-      user.email,
-      user.status,
-      user.role ?? UserRole.USER,
-    );
-
-    const { password, ...safeUser } = user;
-    this.logger.info(
-      'User login completed',
-      { userId: user._id.toString(), email: user.email },
-      AuthService.name,
-    );
-    return { user: safeUser, accessToken: token };
-  }
-
-  private async signToken(
-    sub: string,
-    email: string,
-    status: string,
-    role: UserRole,
-  ) {
-    return this.jwtService.signAsync({ sub, email, status, role });
+    this.logger.info('User login completed', { email: dto.email }, AuthService.name);
+    return { user, ...tokens };
   }
 }

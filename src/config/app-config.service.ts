@@ -148,6 +148,22 @@ export class AppConfigService {
     );
   }
 
+  get cognitoUserPoolId(): string {
+    return this.configService.get<string>('COGNITO_USER_POOL_ID', '');
+  }
+
+  get cognitoClientId(): string {
+    return this.configService.get<string>('COGNITO_CLIENT_ID', '');
+  }
+
+  get cognitoClientSecret(): string {
+    return this.configService.get<string>('COGNITO_CLIENT_SECRET', '');
+  }
+
+  get cognitoRegion(): string {
+    return this.configService.get<string>('COGNITO_REGION', 'us-east-1');
+  }
+
   get s3Bucket(): string {
     return this.configService.get<string>('S3_BUCKET', '');
   }

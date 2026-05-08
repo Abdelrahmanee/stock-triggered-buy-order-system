@@ -1,8 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
-import { StringValue } from 'ms';
 import { AppConfigModule } from './config/app-config.module';
 import { AnalyticsEventsModule } from './common/analytics/analytics-events.module';
 import { LoggingModule } from './common/logging/logging.module';
@@ -26,19 +24,6 @@ import { PriceEventsModule } from './modules/price-events/price-events.module';
     AppConfigModule,
     LoggingModule,
     AnalyticsEventsModule,
-    JwtModule.registerAsync({
-      global: true,
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET', 'super-secret'),
-        signOptions: {
-          expiresIn: configService.get<string>(
-            'JWT_EXPIRES_IN',
-            '1d',
-          ) as StringValue,
-        },
-      }),
-    }),
     MongooseModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
