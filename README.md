@@ -9,8 +9,8 @@ NestJS + MongoDB MVP for price-triggered buy orders with JWT auth, wallet balanc
 - Stock catalog with current prices
 - Triggered buy orders that execute when `currentPrice <= targetPrice`
 - Price event ingestion via webhook-style endpoint
-- BullMQ queues for price updates, trigger evaluation, order execution, and fallback price sync
-- Mock stock-price provider with an external adapter contract for later
+- BullMQ queues for price updates, trigger evaluation, order execution, and Polygon price sync
+- Mock stock-price provider plus a Polygon free-tier external provider
 - Persistent trade executions, wallet ledger entries, portfolio positions, and price events
 
 ## API
@@ -37,6 +37,18 @@ npm run start:dev
 ```
 
 If you want to run without Redis for local testing, set `QUEUE_DRIVER=inline`. The e2e suite already does this automatically.
+
+## Polygon stock provider
+
+The external stock provider uses Polygon free-tier end-of-day aggregate data, not live or delayed snapshot APIs. Configure these values to run price sync from Polygon:
+
+```bash
+STOCK_PROVIDER_MODE=external
+STOCK_POLYGON_PROVIDER_API_KEY=your-key
+PRICE_SYNC_PATTERN=0 30 5 * * 2-6
+```
+
+The scheduled sync uses `GET /v2/aggs/grouped/locale/us/market/stocks/{date}` and falls back across the configured lookback window. `getCurrentPrice(symbol)` uses `GET /v2/aggs/ticker/{symbol}/range/1/day/{from}/{to}`.
 
 ## Verification
 

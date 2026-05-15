@@ -22,11 +22,17 @@ export class UsersService {
   }
 
   async findByEmail(email: string) {
-    return this.userModel.findOne({ email: email.toLowerCase() }).lean();
+    return this.userModel
+      .findOne({ email: email.toLowerCase() })
+      .select('-password')
+      .lean();
   }
 
   async findById(userId: string | Types.ObjectId) {
-    const user = await this.userModel.findById(userId).lean();
+    const user = await this.userModel
+      .findById(userId)
+      .select('-password')
+      .lean();
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -41,6 +47,7 @@ export class UsersService {
         { $inc: { walletBalance: amount } },
         { returnDocument: 'after', lean: true },
       )
+      .select('-password')
       .exec();
 
     if (!user) {
@@ -52,7 +59,12 @@ export class UsersService {
 
   async updateAvatar(userId: string, avatarUrl: string) {
     return this.userModel
-      .findByIdAndUpdate(userId, { avatarUrl }, { returnDocument: 'after', lean: true })
+      .findByIdAndUpdate(
+        userId,
+        { avatarUrl },
+        { returnDocument: 'after', lean: true },
+      )
+      .select('-password')
       .exec();
   }
 
@@ -67,6 +79,7 @@ export class UsersService {
         { $inc: { walletBalance: -amount } },
         { returnDocument: 'after', lean: true },
       )
+      .select('-password')
       .exec();
   }
 }

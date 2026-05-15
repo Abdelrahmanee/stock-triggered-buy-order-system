@@ -1,6 +1,13 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  CognitoIdentityProviderClient,
+  InitiateAuthCommand,
+  SignUpCommand,
+} from '@aws-sdk/client-cognito-identity-provider';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
+import { mockClient } from 'aws-sdk-client-mock';
+import * as jwt from 'jsonwebtoken';
 import { Model } from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import * as request from 'supertest';
@@ -8,6 +15,22 @@ import { BuyOrder } from '../src/modules/orders/schemas/buy-order.schema';
 import { TradeExecution } from '../src/modules/orders/schemas/trade-execution.schema';
 import { User } from '../src/modules/users/schemas/user.schema';
 import { AppModule } from './../src/app.module';
+
+jest.mock('jwks-rsa', () =>
+  jest.fn(() => ({
+    getSigningKey: jest.fn().mockResolvedValue({
+      getPublicKey: () => 'test-public-key',
+    }),
+  })),
+);
+
+jest.mock('jsonwebtoken', () => ({
+  decode: jest.fn(() => ({ header: { kid: 'test-key-id' } })),
+  verify: jest.fn(),
+}));
+
+const cognitoMock = mockClient(CognitoIdentityProviderClient);
+const jwtVerifyMock = jwt.verify as jest.Mock;
 
 describe('Stock Triggered Buy Order System (e2e)', () => {
   let app: INestApplication;
@@ -23,6 +46,19 @@ describe('Stock Triggered Buy Order System (e2e)', () => {
     process.env.QUEUE_DRIVER = 'inline';
     process.env.STOCK_PROVIDER_MODE = 'mock';
     process.env.JWT_EXPIRES_IN = '1d';
+    process.env.COGNITO_CLIENT_ID = 'test-client-id';
+    process.env.COGNITO_CLIENT_SECRET = 'test-client-secret';
+    process.env.COGNITO_USER_POOL_ID = 'us-east-1_test';
+
+    cognitoMock.reset();
+    cognitoMock.on(SignUpCommand).resolves({ UserSub: 'cognito-sub' });
+    cognitoMock.on(InitiateAuthCommand).resolves({
+      AuthenticationResult: {
+        AccessToken: 'access-token',
+        IdToken: 'id-token',
+        RefreshToken: 'refresh-token',
+      },
+    });
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -39,7 +75,9 @@ describe('Stock Triggered Buy Order System (e2e)', () => {
     );
     await app.init();
 
-    buyOrderModel = moduleFixture.get<Model<BuyOrder>>(getModelToken(BuyOrder.name));
+    buyOrderModel = moduleFixture.get<Model<BuyOrder>>(
+      getModelToken(BuyOrder.name),
+    );
     tradeExecutionModel = moduleFixture.get<Model<TradeExecution>>(
       getModelToken(TradeExecution.name),
     );
@@ -52,6 +90,7 @@ describe('Stock Triggered Buy Order System (e2e)', () => {
       tradeExecutionModel.deleteMany({}),
       userModel.deleteMany({}),
     ]);
+    jwtVerifyMock.mockReset();
   });
 
   afterAll(async () => {
@@ -65,12 +104,12 @@ describe('Stock Triggered Buy Order System (e2e)', () => {
       .send({
         name: 'Alice',
         email: 'alice@example.com',
-        password: 'secret123',
+        password: 'Secret123!',
         walletBalance: 1000,
       })
       .expect(201);
 
-    expect(registerResponse.body.accessToken).toBeDefined();
+    expect(registerResponse.body.user._id).toBeDefined();
     expect(registerResponse.body.user.password).toBeUndefined();
     expect(registerResponse.body.user.walletBalance).toBe(1000);
 
@@ -78,7 +117,7 @@ describe('Stock Triggered Buy Order System (e2e)', () => {
       .post('/api/auth/login')
       .send({
         email: 'alice@example.com',
-        password: 'secret123',
+        password: 'Secret123!',
       })
       .expect(201);
 
@@ -92,12 +131,16 @@ describe('Stock Triggered Buy Order System (e2e)', () => {
       .send({
         name: 'Trader',
         email: 'trader@example.com',
-        password: 'secret123',
+        password: 'Secret123!',
         walletBalance: 1000,
       })
       .expect(201);
 
-    const token = registerResponse.body.accessToken;
+    jwtVerifyMock.mockReturnValue({
+      sub: registerResponse.body.user._id,
+      email: 'trader@example.com',
+    });
+    const token = 'access-token';
 
     const orderResponse = await request(app.getHttpServer())
       .post('/api/orders/buy-trigger')
@@ -140,12 +183,16 @@ describe('Stock Triggered Buy Order System (e2e)', () => {
       .send({
         name: 'Budget Trader',
         email: 'budget@example.com',
-        password: 'secret123',
+        password: 'Secret123!',
         walletBalance: 200,
       })
       .expect(201);
 
-    const token = registerResponse.body.accessToken;
+    jwtVerifyMock.mockReturnValue({
+      sub: registerResponse.body.user._id,
+      email: 'budget@example.com',
+    });
+    const token = 'access-token';
 
     const firstOrder = await request(app.getHttpServer())
       .post('/api/orders/buy-trigger')
@@ -198,8 +245,9 @@ describe('Stock Triggered Buy Order System (e2e)', () => {
     expect(
       [refreshedFirstOrder?.status, refreshedSecondOrder?.status].sort(),
     ).toEqual(['completed', 'failed']);
-    expect(
-      [refreshedFirstOrder?.statusReason, refreshedSecondOrder?.statusReason],
-    ).toContain('rejected_insufficient_funds');
+    expect([
+      refreshedFirstOrder?.statusReason,
+      refreshedSecondOrder?.statusReason,
+    ]).toContain('rejected_insufficient_funds');
   });
 });

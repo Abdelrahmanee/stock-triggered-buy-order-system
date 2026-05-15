@@ -93,7 +93,9 @@ export class StocksService implements OnModuleInit {
           {
             $set: {
               symbol: input.symbol.toUpperCase(),
-              name: input.name ?? input.symbol.toUpperCase(),
+              name: input.name ?? {
+                $ifNull: ['$name', input.symbol.toUpperCase()],
+              },
               currentPrice: input.price,
               leastPrice: {
                 $cond: [

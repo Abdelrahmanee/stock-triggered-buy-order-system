@@ -141,10 +141,33 @@ export class AppConfigService {
     );
   }
 
+  get stockPolygonProviderApiKey(): string {
+    return this.getOptionalString('STOCK_POLYGON_PROVIDER_API_KEY');
+  }
+
+  get stockPolygonBaseUrl(): string {
+    return (
+      this.getOptionalString('STOCK_POLYGON_BASE_URL') ||
+      'https://api.polygon.io'
+    );
+  }
+
+  get stockPolygonLookbackDays(): number {
+    return Number(
+      this.configService.get<string>('STOCK_POLYGON_LOOKBACK_DAYS', '7'),
+    );
+  }
+
+  get stockPolygonTimeoutMs(): number {
+    return Number(
+      this.configService.get<string>('STOCK_POLYGON_TIMEOUT_MS', '10000'),
+    );
+  }
+
   get priceSyncPattern(): string {
     return this.configService.get<string>(
       'PRICE_SYNC_PATTERN',
-      '*/30 * * * * *',
+      '0 30 5 * * 2-6',
     );
   }
 
@@ -179,7 +202,11 @@ export class AppConfigService {
     if (!accessKeyId || !secretAccessKey) {
       throw new Error('S3 AWS credentials are not configured.');
     }
-    return { accessKeyId, secretAccessKey, ...(sessionToken ? { sessionToken } : {}) };
+    return {
+      accessKeyId,
+      secretAccessKey,
+      ...(sessionToken ? { sessionToken } : {}),
+    };
   }
 
   private getOptionalString(key: string): string {

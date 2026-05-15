@@ -22,6 +22,7 @@ describe('AuthService', () => {
   const config = {
     cognitoRegion: 'us-east-1',
     cognitoClientId: 'test-client-id',
+    cognitoClientSecret: 'test-client-secret',
     cognitoUserPoolId: 'us-east-1_test',
   } as AppConfigService;
 
@@ -33,7 +34,10 @@ describe('AuthService', () => {
       create: jest.fn(),
     } as unknown as jest.Mocked<UsersService>;
 
-    logger = { info: jest.fn(), warnWithMeta: jest.fn() } as unknown as jest.Mocked<AppLogger>;
+    logger = {
+      info: jest.fn(),
+      warnWithMeta: jest.fn(),
+    } as unknown as jest.Mocked<AppLogger>;
 
     authService = new AuthService(usersService, config, logger);
   });
@@ -58,12 +62,18 @@ describe('AuthService', () => {
   });
 
   it('throws ConflictException when Cognito reports duplicate email', async () => {
-    cognitoMock.on(SignUpCommand).rejects(
-      new UsernameExistsException({ message: 'exists', $metadata: {} }),
-    );
+    cognitoMock
+      .on(SignUpCommand)
+      .rejects(
+        new UsernameExistsException({ message: 'exists', $metadata: {} }),
+      );
 
     await expect(
-      authService.register({ name: 'User', email: 'dup@example.com', password: 'Secret123!' }),
+      authService.register({
+        name: 'User',
+        email: 'dup@example.com',
+        password: 'Secret123!',
+      }),
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -75,9 +85,14 @@ describe('AuthService', () => {
         RefreshToken: 'refresh',
       },
     });
-    usersService.findByEmail.mockResolvedValue({ email: 'user@example.com' } as any);
+    usersService.findByEmail.mockResolvedValue({
+      email: 'user@example.com',
+    } as any);
 
-    const result = await authService.login({ email: 'user@example.com', password: 'Secret123!' });
+    const result = await authService.login({
+      email: 'user@example.com',
+      password: 'Secret123!',
+    });
 
     expect(result.accessToken).toBe('access');
     expect(result.idToken).toBe('id');
@@ -85,9 +100,9 @@ describe('AuthService', () => {
   });
 
   it('throws UnauthorizedException on bad credentials', async () => {
-    cognitoMock.on(InitiateAuthCommand).rejects(
-      new NotAuthorizedException({ message: 'bad', $metadata: {} }),
-    );
+    cognitoMock
+      .on(InitiateAuthCommand)
+      .rejects(new NotAuthorizedException({ message: 'bad', $metadata: {} }));
 
     await expect(
       authService.login({ email: 'user@example.com', password: 'wrong' }),
