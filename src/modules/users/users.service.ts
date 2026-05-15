@@ -57,6 +57,13 @@ export class UsersService {
     return user;
   }
 
+  async updateRole(userId: string, role: UserRole) {
+    return this.userModel
+      .findByIdAndUpdate(userId, { role }, { returnDocument: 'after', lean: true })
+      .select('-password')
+      .exec();
+  }
+
   async updateAvatar(userId: string, avatarUrl: string) {
     return this.userModel
       .findByIdAndUpdate(

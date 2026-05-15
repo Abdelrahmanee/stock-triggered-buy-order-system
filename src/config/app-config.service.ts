@@ -187,6 +187,14 @@ export class AppConfigService {
     return this.configService.get<string>('COGNITO_REGION', 'us-east-1');
   }
 
+  get cognitoAdminGroupName(): string {
+    return this.configService.get<string>('COGNITO_ADMIN_GROUP_NAME', 'admin-group');
+  }
+
+  get cognitoUserGroupName(): string {
+    return this.configService.get<string>('COGNITO_USER_GROUP_NAME', 'user-group');
+  }
+
   get s3Bucket(): string {
     return this.configService.get<string>('S3_BUCKET', '');
   }

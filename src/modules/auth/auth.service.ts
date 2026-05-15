@@ -9,6 +9,10 @@ import {
   SignUpCommand,
   InitiateAuthCommand,
   ConfirmSignUpCommand,
+  AdminCreateUserCommand,
+  AdminAddUserToGroupCommand,
+  AdminInitiateAuthCommand,
+  RespondToAuthChallengeCommand,
   UsernameExistsException,
   NotAuthorizedException,
   UserNotConfirmedException,
@@ -18,11 +22,14 @@ import {
 import { createHmac } from 'crypto';
 import { AppLogger } from '../../common/logging/app-logger.service';
 import { AppConfigService } from '../../config/app-config.service';
+import { UserRole } from '../../common/constants/user-role.constant';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { InviteAdminDto } from './dto/invite-admin.dto';
+import { AcceptAdminInviteDto } from './dto/accept-admin-invite.dto';
 
 @Injectable()
 export class AuthService {
@@ -143,5 +150,94 @@ export class AuthService {
     const user = await this.usersService.findByEmail(dto.email);
     this.logger.info('User login completed', { email: dto.email }, AuthService.name);
     return { user, ...tokens };
+  }
+
+  async inviteAdmin(dto: InviteAdminDto) {
+    this.logger.info('Inviting admin user', { email: dto.email }, AuthService.name);
+
+    try {
+      await this.cognito.send(
+        new AdminCreateUserCommand({
+          UserPoolId: this.config.cognitoUserPoolId,
+          Username: dto.email.toLowerCase(),
+          UserAttributes: [
+            { Name: 'email', Value: dto.email.toLowerCase() },
+            { Name: 'name', Value: dto.name },
+            { Name: 'email_verified', Value: 'true' },
+          ],
+          DesiredDeliveryMediums: ['EMAIL'],
+        }),
+      );
+    } catch (err) {
+      if (err instanceof UsernameExistsException) {
+        throw new ConflictException('User with this email already exists');
+      }
+      throw err;
+    }
+
+    this.logger.info('Admin invitation sent', { email: dto.email }, AuthService.name);
+    return { message: 'Invitation sent. The user will receive a temporary password by email.' };
+  }
+
+  async acceptAdminInvite(dto: AcceptAdminInviteDto) {
+    const email = dto.email.toLowerCase();
+    this.logger.info('Accepting admin invite', { email }, AuthService.name);
+
+    // Initiate auth with the temporary password — Cognito will return NEW_PASSWORD_REQUIRED challenge
+    const authResult = await this.cognito.send(
+      new AdminInitiateAuthCommand({
+        UserPoolId: this.config.cognitoUserPoolId,
+        ClientId: this.config.cognitoClientId,
+        AuthFlow: 'ADMIN_USER_PASSWORD_AUTH',
+        AuthParameters: {
+          USERNAME: email,
+          PASSWORD: dto.temporaryPassword,
+          SECRET_HASH: this.computeSecretHash(email),
+        },
+      }),
+    );
+
+    if (authResult.ChallengeName !== 'NEW_PASSWORD_REQUIRED') {
+      throw new BadRequestException('No pending password challenge for this user');
+    }
+
+    // Respond to the challenge with the new permanent password
+    const challengeResult = await this.cognito.send(
+      new RespondToAuthChallengeCommand({
+        ClientId: this.config.cognitoClientId,
+        ChallengeName: 'NEW_PASSWORD_REQUIRED',
+        Session: authResult.Session,
+        ChallengeResponses: {
+          USERNAME: email,
+          NEW_PASSWORD: dto.newPassword,
+          SECRET_HASH: this.computeSecretHash(email),
+        },
+      }),
+    );
+
+    // Add user to admin-group in Cognito
+    await this.cognito.send(
+      new AdminAddUserToGroupCommand({
+        UserPoolId: this.config.cognitoUserPoolId,
+        Username: email,
+        GroupName: this.config.cognitoAdminGroupName,
+      }),
+    );
+
+    // Upsert local user record with admin role
+    let user = await this.usersService.findByEmail(email);
+    if (!user) {
+      user = await this.usersService.create({ name: dto.email, email, password: '', role: UserRole.ADMIN });
+    } else {
+      await this.usersService.updateRole(user._id.toString(), UserRole.ADMIN);
+    }
+
+    const auth = challengeResult.AuthenticationResult!;
+    this.logger.info('Admin invite accepted', { email }, AuthService.name);
+    return {
+      accessToken: auth.AccessToken!,
+      idToken: auth.IdToken!,
+      refreshToken: auth.RefreshToken!,
+    };
   }
 }
