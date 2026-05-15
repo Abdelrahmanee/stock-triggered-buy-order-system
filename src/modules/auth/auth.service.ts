@@ -71,6 +71,14 @@ export class AuthService {
       throw err;
     }
 
+    await this.cognito.send(
+      new AdminAddUserToGroupCommand({
+        UserPoolId: this.config.cognitoUserPoolId,
+        Username: dto.email.toLowerCase(),
+        GroupName: this.config.cognitoUserGroupName,
+      }),
+    );
+
     const user = await this.usersService.create({
       name: dto.name,
       email: dto.email.toLowerCase(),
