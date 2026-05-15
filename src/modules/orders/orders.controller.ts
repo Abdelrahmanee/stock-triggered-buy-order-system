@@ -27,6 +27,7 @@ export class OrdersController {
   ) {
     return this.ordersService.createBuyOrder(user.sub, dto, idempotencyKey);
   }
+  
 
   @Get()
   listOrders(@CurrentUser() user: JwtPayload) {
