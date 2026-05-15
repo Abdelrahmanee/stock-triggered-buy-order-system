@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Param,
   Patch,
   Post,
@@ -22,8 +23,9 @@ export class OrdersController {
   createBuyOrder(
     @CurrentUser() user: JwtPayload,
     @Body() dto: CreateBuyOrderDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ) {
-    return this.ordersService.createBuyOrder(user.sub, dto);
+    return this.ordersService.createBuyOrder(user.sub, dto, idempotencyKey);
   }
 
   @Get()

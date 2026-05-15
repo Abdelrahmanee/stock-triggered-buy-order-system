@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { UsersModule } from '../../src/modules/users/users.module';
 import {
   AdminAnalyticsSnapshot,
   AdminAnalyticsSnapshotSchema,
@@ -18,6 +19,7 @@ import { AnalyticsService } from './analytics.service';
 
 @Module({
   imports: [
+    UsersModule,
     MongooseModule.forFeature([
       {
         name: UserAnalyticsSnapshot.name,

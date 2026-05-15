@@ -53,7 +53,12 @@ export class OrdersService {
     return new Types.ObjectId(normalizedValue);
   }
 
-  async createBuyOrder(userId: string, dto: CreateBuyOrderDto) {
+  async createBuyOrder(userId: string, dto: CreateBuyOrderDto, idempotencyKey?: string) {
+    if (idempotencyKey) {
+      const existing = await this.buyOrderModel.findOne({ idempotencyKey }).lean();
+      if (existing) return existing;
+    }
+
     this.logger.info(
       'Creating buy trigger order',
       {
@@ -84,6 +89,7 @@ export class OrdersService {
       targetPrice: dto.targetPrice,
       quantity: dto.quantity,
       status: BuyOrderStatus.PENDING,
+      ...(idempotencyKey ? { idempotencyKey } : {}),
     });
 
     if (stock.currentPrice <= dto.targetPrice) {

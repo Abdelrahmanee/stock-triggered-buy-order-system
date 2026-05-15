@@ -3,9 +3,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
 import { StringValue } from 'ms';
-import { AppConfigModule } from '../../src/config/app-config.module';
+import { AnalyticsEventsModule } from '../../src/common/analytics/analytics-events.module';
 import { LoggingModule } from '../../src/common/logging/logging.module';
 import { RequestContextMiddleware } from '../../src/common/logging/request-context.middleware';
+import { AppConfigModule } from '../../src/config/app-config.module';
 import { AnalyticsModule } from './analytics.module';
 
 @Module({
@@ -16,6 +17,7 @@ import { AnalyticsModule } from './analytics.module';
     }),
     AppConfigModule,
     LoggingModule,
+    AnalyticsEventsModule,
     JwtModule.registerAsync({
       global: true,
       inject: [ConfigService],

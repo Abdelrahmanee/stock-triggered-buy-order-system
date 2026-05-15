@@ -34,6 +34,9 @@ export class BuyOrder {
 
   @Prop()
   executedAt?: Date;
+
+  @Prop({ type: String, sparse: true, unique: true })
+  idempotencyKey?: string;
 }
 
 export const BuyOrderSchema = SchemaFactory.createForClass(BuyOrder);
