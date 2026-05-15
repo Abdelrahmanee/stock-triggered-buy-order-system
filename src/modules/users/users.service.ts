@@ -17,8 +17,13 @@ export class UsersService {
     password: string;
     walletBalance?: number;
     role?: UserRole;
+    cognitoSub?: string;
   }) {
     return this.userModel.create(input);
+  }
+
+  async findByCognitoSub(cognitoSub: string) {
+    return this.userModel.findOne({ cognitoSub }).select('-password').lean();
   }
 
   async findByEmail(email: string) {

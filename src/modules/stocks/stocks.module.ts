@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppConfigModule } from '../../config/app-config.module';
+import { UsersModule } from '../users/users.module';
 import {
   StockSubscription,
   StockSubscriptionSchema,
@@ -12,6 +13,7 @@ import { StocksService } from './stocks.service';
 @Module({
   imports: [
     AppConfigModule,
+    UsersModule,
     MongooseModule.forFeature([
       { name: Stock.name, schema: StockSchema },
       { name: StockSubscription.name, schema: StockSubscriptionSchema },

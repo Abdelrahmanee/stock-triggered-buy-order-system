@@ -26,6 +26,9 @@ export class User {
 
   @Prop({ type: String, default: null })
   avatarUrl: string | null;
+
+  @Prop({ type: String, unique: true, sparse: true })
+  cognitoSub?: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

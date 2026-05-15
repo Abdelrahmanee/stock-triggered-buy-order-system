@@ -11,6 +11,7 @@ import { AppConfigService } from '../../config/app-config.service';
 import { UserRole } from '../constants/user-role.constant';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
 import { RequestContextService } from '../logging/request-context.service';
+import { UsersService } from '../../modules/users/users.service';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -19,6 +20,7 @@ export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly config: AppConfigService,
     private readonly requestContextService: RequestContextService,
+    private readonly usersService: UsersService,
   ) {
     this.jwksClient = JwksRsa({
       jwksUri: `https://cognito-idp.${config.cognitoRegion}.amazonaws.com/${config.cognitoUserPoolId}/.well-known/jwks.json`,
@@ -46,13 +48,17 @@ export class JwtAuthGuard implements CanActivate {
 
       const payload = jwt.verify(token, publicKey, { algorithms: ['RS256'] }) as jwt.JwtPayload;
 
+      const cognitoSub = payload.sub!;
+      const user = await this.usersService.findByCognitoSub(cognitoSub);
+      if (!user) throw new UnauthorizedException('User not found');
+
       request.user = {
-        sub: payload.sub!,
+        sub: user._id.toString(),
         email: payload.email ?? payload['cognito:username'] ?? '',
-        status: 'active',
+        status: user.status,
         role: this.extractRole(payload),
       };
-      this.requestContextService.setUserId(payload.sub!);
+      this.requestContextService.setUserId(user._id.toString());
       return true;
     } catch {
       throw new UnauthorizedException('Invalid token');

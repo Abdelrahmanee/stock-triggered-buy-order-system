@@ -52,8 +52,9 @@ export class AuthService {
   async register(dto: RegisterDto) {
     this.logger.info('Attempting user registration', { email: dto.email }, AuthService.name);
 
+    let cognitoSub: string;
     try {
-      await this.cognito.send(
+      const result = await this.cognito.send(
         new SignUpCommand({
           ClientId: this.config.cognitoClientId,
           SecretHash: this.computeSecretHash(dto.email.toLowerCase()),
@@ -62,6 +63,7 @@ export class AuthService {
           UserAttributes: [{ Name: 'email', Value: dto.email.toLowerCase() }],
         }),
       );
+      cognitoSub = result.UserSub!;
     } catch (err) {
       if (err instanceof UsernameExistsException) {
         throw new ConflictException('User with this email already exists');
@@ -74,6 +76,7 @@ export class AuthService {
       email: dto.email.toLowerCase(),
       password: '',
       walletBalance: dto.walletBalance ?? 0,
+      cognitoSub,
     });
 
     this.logger.info('User registration completed', { email: user.email }, AuthService.name);
