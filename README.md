@@ -58,6 +58,15 @@ npm run test:e2e
 npm run build
 ```
 
+## CI/CD
+
+GitHub Actions runs CI on pushes and pull requests to `main`, `master`, and
+`develop`. The pipeline installs dependencies with `npm ci`, runs the Jest unit
+suite, and builds the NestJS app.
+
+On pushes to `main` or `master`, the CD job builds the Docker image and publishes
+it to GitHub Container Registry as `ghcr.io/<owner>/<repo>`.
+
 ## Postman
 
 Postman files are available in [postman](E:\stock-triggered-buy-order-system\postman):
