@@ -58,6 +58,9 @@ npm run test:e2e
 npm run build
 ```
 
+For AWS SAM local Lambda build and invoke testing, see
+[AWS SAM Local Testing Guide](docs/aws-sam-local-testing.md).
+
 ## CI/CD
 
 GitHub Actions runs CI on pushes and pull requests to `main`, `master`, and

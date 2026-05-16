@@ -1,18 +1,21 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-
 Resources:
   TestFunction:
     Type: AWS::Serverless::Function
     Properties:
       Runtime: nodejs18.x
       Handler: lambda.handler
-      CodeUri: .
+      CodeUri: TestFunction
       Timeout: 30
+      Environment:
+        Variables:
+          NODE_OPTIONS: ' --enable-source-maps'
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
         EntryPoints:
-          - lambda.ts
-        Target: es2021
+        - lambda.ts
         Sourcemap: true
+        Target: es2021
+      SamResourceId: TestFunction
