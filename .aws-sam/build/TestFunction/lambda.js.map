@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["file:///C:/Users/ABDELR~1/AppData/Local/Temp/tmplls8yo1b/lambda.ts"],
+  "sourcesContent": ["// lambda.ts\r\nexport const handler = async (event: any) => {\r\n  return {\r\n    statusCode: 200,\r\n    body: JSON.stringify({ message: \"Lambda works\" }),\r\n  };\r\n};"],
+  "mappings": "4ZAAA,IAAAA,EAAA,GAAAC,EAAAD,EAAA,aAAAE,IAAA,eAAAC,EAAAH,GACO,IAAME,EAAU,MAAOE,IACrB,CACL,WAAY,IACZ,KAAM,KAAK,UAAU,CAAE,QAAS,cAAe,CAAC,CAClD",
+  "names": ["lambda_exports", "__export", "handler", "__toCommonJS", "event"]
+}
